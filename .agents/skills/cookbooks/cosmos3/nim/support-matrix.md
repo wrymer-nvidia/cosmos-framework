@@ -225,20 +225,36 @@ reductions described in
 [GPU Memory and `layer` Profiles](multiview.md#gpu-memory-and-layer-profiles).
 They run slower but fit GPUs with less memory.
 
-| Precision | Performance Profile | GPUs | Parallelism | Model VRAM Optimized | Minimum VRAM/Device | System-Memory Floor |
+The host memory column lists BF16 / FP8 values where they differ.
+
+| Precision | Performance Profile | GPUs | Parallelism | Model VRAM Optimized | Minimum VRAM/Device | Host Memory |
 | --- | --- | ---: | --- | --- | ---: | ---: |
-| BF16, FP8 | `latency` | 1 | None | False | 150 GiB | 40 GiB |
-| BF16, FP8 | `latency` | 1 | None | True | 72 GiB | 64 GiB |
-| BF16, FP8 | `latency` | 2 | CFG 2 | False | 150 GiB | 40 GiB |
-| BF16, FP8 | `latency` | 2 | Ulysses 2 | False | 93 GiB | 40 GiB |
-| BF16, FP8 | `latency` | 2 | CFG 2 | True | 72 GiB | 64 GiB |
-| BF16, FP8 | `latency` | 4 | CFG 2 × Ulysses 2 | False | 93 GiB | 40 GiB |
-| BF16, FP8 | `latency` | 4 | CFG 2 × Ulysses 2 | True | 72 GiB | 64 GiB |
-| BF16, FP8 | `latency` | 8 | CFG 2 × Ulysses 4 | False | 93 GiB | 40 GiB |
-| BF16 | `latency` | 8 | CFG 2 × Ulysses 2 × TP 2 | True | 72 GiB | 64 GiB |
-| FP8 | `latency` | 8 | CFG 2 × Ulysses 4 | True | 72 GiB | 64 GiB |
-| BF16, FP8 | `throughput` | 2, 4, 8 | One replica per GPU | False | 93 GiB | 40 GiB |
-| BF16, FP8 | `throughput` | 2, 4, 8 | One replica per GPU | True | 72 GiB | 64 GiB |
+| BF16, FP8 | `latency` | 1 | None | False | 150 GiB | 64 GiB |
+| BF16, FP8 | `latency` | 1 | None | True | 72 GiB | 200 / 176 GiB |
+| BF16, FP8 | `latency` | 2 | CFG 2 | False | 150 GiB | 80 GiB |
+| BF16, FP8 | `latency` | 2 | Ulysses 2 | False | 93 GiB | 80 GiB |
+| BF16, FP8 | `latency` | 2 | CFG 2 | True | 72 GiB | 272 / 224 GiB |
+| BF16, FP8 | `latency` | 4 | CFG 2 × Ulysses 2 | False | 93 GiB | 112 GiB |
+| BF16, FP8 | `latency` | 4 | CFG 2 × Ulysses 2 | True | 72 GiB | 408 / 328 GiB |
+| BF16, FP8 | `latency` | 8 | CFG 2 × Ulysses 4 | False | 93 GiB | 184 GiB |
+| BF16 | `latency` | 8 | CFG 2 × Ulysses 2 × TP 2 | True | 72 GiB | 352 GiB |
+| FP8 | `latency` | 8 | CFG 2 × Ulysses 4 | True | 72 GiB | 528 GiB |
+| BF16, FP8 | `throughput` | 2 | One replica per GPU | False | 93 GiB | 248 GiB |
+| BF16, FP8 | `throughput` | 4 | One replica per GPU | False | 93 GiB | 480 GiB |
+| BF16, FP8 | `throughput` | 8 | One replica per GPU | False | 93 GiB | 944 GiB |
+| BF16, FP8 | `throughput` | 2 | One replica per GPU | True | 72 GiB | 384 / 344 GiB |
+| BF16, FP8 | `throughput` | 4 | One replica per GPU | True | 72 GiB | 744 / 664 GiB |
+| BF16, FP8 | `throughput` | 8 | One replica per GPU | True | 72 GiB | 1480 / 1312 GiB |
+
+Host memory is the peak host memory that the container cannot reclaim while it
+serves the largest request (720p, 200 frames, eleven cameras, joint LiDAR) on
+every replica at once, plus headroom. Profile selection checks a lower
+system-memory floor (40 GiB for resident profiles, 64 GiB for `layer`
+profiles), so size the host or container memory limit to this column instead.
+Most of the memory is pinned host memory: it counts toward the container memory
+limit, not toward `--shm-size`, and stays allocated between requests. The
+[multiview variables](configuration.md#multiview) list how much each VRAM
+reduction adds, so you can estimate the effect of an override.
 
 Latency layouts without Ulysses or tensor parallelism (one GPU, or CFG 2 on two
 GPUs) hold the whole model and sequence on every GPU, so they need the

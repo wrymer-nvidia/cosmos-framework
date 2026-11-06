@@ -202,19 +202,25 @@ selection: the NIM first selects a profile, including its VRAM floor, and then
 applies them. To choose a different profile, use `NIM_OFFLOAD_MODE` or the
 other [Advanced Profile Controls](#advanced-profile-controls) instead.
 
-| Name | Default | Use |
-| --- | --- | --- |
-| `NIM_MULTIVIEW_LAYER_OFFLOAD` | Unset: follows the selected profile (on for `layer` profiles) | Override DiT layer offload for the selected profile without changing profile selection; set `false` to keep the transformer on the GPU. Two-GPU tensor-parallel `layer` profiles reject `false` |
-| `NIM_MULTIVIEW_VAE_TILING` | Unset: follows the selected profile (on for `layer` profiles) | Override VAE tiling for the selected profile; set `false` to encode and decode whole frames |
-| `VLLM_OMNI_COSMOS3_MULTIVIEW_VAE_OFFLOAD` | `1` on single-GPU `layer` engines, otherwise `0` | Keep the camera VAE and the LiDAR encoder and decoder in host memory except while they encode or decode; set `0` to keep them on the GPU, or `1` to use it on any profile |
-| `VLLM_OMNI_COSMOS3_MASKLESS_HEAD_GROUPS` | `8` on single-GPU engines, otherwise `1` | Split each attention pass into this many KV-head groups to bound attention working memory; set `1` for a single pass |
-| `VLLM_OMNI_COSMOS3_FA3_NUM_SPLITS` | `1` | FlashAttention 3 split count for maskless attention passes on Hopper GPUs; `1` avoids the slower split-KV kernel on long K/V sequences such as LiDAR. Set `0` for automatic split selection or another non-negative integer to force that count. A blank value counts as unset; the NIM rejects other invalid values at startup |
-| `VLLM_OMNI_COSMOS3_FUSED_INDEXED_MERGE` | `false` | Experimental. Use a fused Triton kernel for the gather, FP32 log-sum-exp merge, and indexed accumulator writes of maskless attention passes. Accepts `1/0/true/false/yes/no`. Unsupported devices or layouts fall back to the default path |
-| `VLLM_OMNI_SEACACHE_HISTORY_DEVICE` | `cpu` on single-GPU engines, otherwise `cuda` | Keep SeaCache residual history in pinned host memory; set `cuda` to keep it on the GPU |
-| `PYTORCH_CUDA_ALLOC_CONF` | `expandable_segments:True` on single-GPU engines, otherwise unset | PyTorch allocator settings; expandable segments reduce memory fragmentation |
+| Name | Default | Use | Host memory added |
+| --- | --- | --- | --- |
+| `NIM_MULTIVIEW_LAYER_OFFLOAD` | Unset: follows the selected profile (on for `layer` profiles) | Override DiT layer offload for the selected profile without changing profile selection; set `false` to keep the transformer on the GPU. Two-GPU tensor-parallel `layer` profiles reject `false` | Pinned copy of the transformer weights per GPU: about 36 GiB for BF16 and 18 GiB for FP8, half that with tensor parallelism |
+| `NIM_MULTIVIEW_VAE_TILING` | Unset: follows the selected profile (on for `layer` profiles) | Override VAE tiling for the selected profile; set `false` to encode and decode whole frames | None |
+| `VLLM_OMNI_COSMOS3_MULTIVIEW_VAE_OFFLOAD` | `1` on single-GPU `layer` engines, otherwise `0` | Keep the camera VAE and the LiDAR encoder and decoder in host memory except while they encode or decode; set `0` to keep them on the GPU, or `1` to use it on any profile | The VAE and LiDAR codec weights per GPU, small next to the other entries |
+| `VLLM_OMNI_COSMOS3_MASKLESS_HEAD_GROUPS` | `8` on single-GPU engines, otherwise `1` | Split each attention pass into this many KV-head groups to bound attention working memory; set `1` for a single pass | None |
+| `VLLM_OMNI_COSMOS3_FA3_NUM_SPLITS` | `1` | FlashAttention 3 split count for maskless attention passes on Hopper GPUs; `1` avoids the slower split-KV kernel on long K/V sequences such as LiDAR. Set `0` for automatic split selection or another non-negative integer to force that count. A blank value counts as unset; the NIM rejects other invalid values at startup | None |
+| `VLLM_OMNI_COSMOS3_FUSED_INDEXED_MERGE` | `false` | Experimental. Use a fused Triton kernel for the gather, FP32 log-sum-exp merge, and indexed accumulator writes of maskless attention passes. Accepts `1/0/true/false/yes/no`. Unsupported devices or layouts fall back to the default path | None |
+| `VLLM_OMNI_SEACACHE_HISTORY_DEVICE` | `cpu` on single-GPU engines, otherwise `cuda` | Keep SeaCache residual history in pinned host memory; set `cuda` to keep it on the GPU | With `cpu`, pinned history buffers per GPU: about 64 GiB for the largest request, 32 GiB when CFG runs on separate GPUs; scales with cameras, frames, and resolution |
+| `PYTORCH_CUDA_ALLOC_CONF` | `expandable_segments:True` on single-GPU engines, otherwise unset | PyTorch allocator settings; expandable segments reduce memory fragmentation | None |
 
 A single-GPU engine is a multiview profile whose engine runs on one GPU: the
 one-GPU `layer` profile and `throughput` profiles that run one replica per GPU.
+
+The host memory column is per GPU that runs the reduction, and the allocations
+stay in place between requests. To estimate host memory after an override,
+start from the profile's row in [Multiview Profiles](support-matrix.md#multiview-profiles)
+and subtract the entry for each GPU where you turn a reduction off, or add it
+where you turn one on.
 
 The NIM sets these variables automatically for the selected profile, so most
 deployments do not need to set any of them. Override them only for advanced
